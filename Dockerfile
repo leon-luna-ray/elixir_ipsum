@@ -25,6 +25,6 @@ RUN mix do deps.get, deps.compile
 COPY lib lib
 COPY priv priv
 
-EXPOSE $PORT
+EXPOSE 8080
 
 CMD ["mix", "phx.server"]

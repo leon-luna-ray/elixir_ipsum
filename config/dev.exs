@@ -1,10 +1,10 @@
-use Mix.Config
+import Config
 
 # Configure your database
 config :elixir_ipsum, ElixirIpsum.Repo,
   username: "postgres",
   password: "root",
-  database: "elixir_ipsum_db",
+  database: "elixir-ipsum-db",
   hostname: "localhost",
   port: "5500",
   show_sensitive_data_on_connection_error: true,

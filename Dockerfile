@@ -1,86 +1,88 @@
-# # Build Stage
-FROM node:16 AS build
+ARG ELIXIR_VERSION=1.15.7
+ARG OTP_VERSION=26.2.1
+ARG DEBIAN_VERSION=bullseye-20231009-slim
+
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
+ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
+
+FROM ${BUILDER_IMAGE} as builder
+
+# install build dependencies
+RUN apt-get update -y && apt-get install -y build-essential git \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# prepare build dir
 WORKDIR /app
 
-COPY . .
-WORKDIR /app/assets
-RUN yarn install && yarn deploy
-
-# Production Stage
-FROM elixir:latest
-
-ENV ECTO_IPV6 true
-ENV ERL_AFLAGS "-proto_dist inet6_tcp"
-
+# install hex + rebar
 RUN mix local.hex --force && \
     mix local.rebar --force
 
-WORKDIR /app
-
-COPY config/prod.secret.exs config/prod.secret.exs
+# set build ENV
+ENV DATABASE_URL="$DATABASE_URL"
+ENV SECRET_KEY_BASE="$SECRET_KEY_BASE"
+ENV MIX_ENV="prod"
+ENV ECTO_IPV6 true
+ENV ERL_AFLAGS "-proto_dist inet6_tcp"
+# install mix dependencies
 COPY mix.exs mix.lock ./
-COPY config config
+RUN mix deps.get --only $MIX_ENV
+RUN mkdir config
 
-COPY --from=build /app/priv/static priv/static
+# copy compile-time config files before we compile dependencies
+# to ensure any relevant config change will trigger the dependencies
+# to be re-compiled.
+COPY config/config.exs config/${MIX_ENV}.exs config/
+COPY config/prod.secret.exs config/
+RUN mix deps.compile
 
-RUN mix do deps.get, deps.compile
-
-COPY lib lib
 COPY priv priv
 
-EXPOSE 8080
+COPY lib lib
 
-CMD ["mix", "phx.server"]
+COPY assets assets
 
-# # Build Stage for Assets
-# FROM node:16 AS assets_build
-# WORKDIR /app
+# compile assets
+# RUN mix assets.deploy
 
-# COPY . .
-# WORKDIR /app/assets
-# RUN yarn install && yarn deploy
+# Compile the release
+RUN mix compile
 
-# # Elixir dependencies and compilation
-# FROM elixir:1.7 AS elixir_build
+# Changes to config/runtime.exs don't require recompiling the code
 
-# RUN mix local.hex --force && \
-#     mix local.rebar --force
+COPY rel rel
+RUN mix release
 
-# WORKDIR /app
+# start a new build stage so that the final image will only contain
+# the compiled release and other runtime necessities
+FROM ${RUNNER_IMAGE}
 
-# COPY config/prod.secret.exs config/prod.secret.exs
-# COPY mix.exs mix.lock ./
-# COPY config config
+RUN apt-get update -y && \
+  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
+  && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
-# COPY --from=assets_build /app/priv/static priv/static
+# Set the locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-# RUN mix do deps.get, deps.compile
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
 
-# # Application release
-# FROM elixir:latest AS release
+WORKDIR "/app"
+RUN chown nobody /app
 
-# WORKDIR /app
+# set runner ENV
+ENV MIX_ENV="prod"
 
-# COPY --from=elixir_build /app .
 
-# # Install Hex and Rebar
-# RUN mix local.hex --force && \
-#     mix local.rebar --force
+# Only copy the final release from the build stage
+COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/elixir_ipsum ./
 
-# # Ensure that dependencies are fetched
-# RUN mix deps.get
+USER nobody
 
-# # Compile the Elixir application and create the release
-# RUN mix release
+# If using an environment that doesn't automatically reap zombie processes, it is
+# advised to add an init process such as tini via `apt-get install`
+# above and adding an entrypoint. See https://github.com/krallin/tini for details
+# ENTRYPOINT ["/tini", "--"]
 
-# # Final minimal image for production
-# FROM elixir:latest
-
-# WORKDIR /app
-
-# # Copy only the necessary release artifacts
-# COPY --from=build /app/priv/static priv/static
-
-# EXPOSE 8080
-
-# CMD ["mix", "phx.server"]
+CMD ["/app/bin/server"]

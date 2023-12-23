@@ -6,5 +6,5 @@ Lorem Ipsum REST API
 ## Technologies
 - Elixir
 - Docker
-- Phoenix
+- Phoenidockx
 - Fly.io

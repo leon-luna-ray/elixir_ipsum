@@ -9,6 +9,9 @@ RUN yarn install && yarn deploy
 # Production Stage
 FROM elixir:latest
 
+ENV ECTO_IPV6 true
+ENV ERL_AFLAGS "-proto_dist inet6_tcp"
+
 RUN mix local.hex --force && \
     mix local.rebar --force
 

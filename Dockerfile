@@ -34,6 +34,7 @@ RUN mkdir config
 # to be re-compiled.
 COPY config/config.exs config/${MIX_ENV}.exs config/
 COPY config/prod.secret.exs config/
+COPY config/runtime.exs config/runtime.exs
 RUN mix deps.compile
 
 COPY priv priv
@@ -80,9 +81,8 @@ COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/elixir_ipsum 
 
 USER nobody
 
-# If using an environment that doesn't automatically reap zombie processes, it is
-# advised to add an init process such as tini via `apt-get install`
-# above and adding an entrypoint. See https://github.com/krallin/tini for details
-# ENTRYPOINT ["/tini", "--"]
 
-CMD ["/app/bin/server"]
+RUN chmod +x /app/bin/*
+
+CMD ["/app/bin/elixir_ipsum", "start"]
+

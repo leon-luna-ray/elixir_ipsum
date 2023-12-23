@@ -4,8 +4,7 @@ services:
   phoenix_app:
     build:
       context: .
-      target: build
-      dockerfile: ./Dockerfile.dev
+      dockerfile: Dockerfile.dev
     ports:
       - "8080:8080"
     environment:
